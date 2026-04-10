@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -27,6 +28,7 @@ type Conn struct {
 	mu       sync.Mutex
 	closed   bool
 	closeCh  chan struct{}
+	debug    bool
 
 	// Channels for received messages
 	regularCh chan *Frame
@@ -61,13 +63,18 @@ func Dial(ctx context.Context, wsURL, cookie, origin string) (*Conn, error) {
 	return c, nil
 }
 
+// SetDebug enables debug logging to stderr.
+func (c *Conn) SetDebug(on bool) {
+	c.debug = on
+}
+
 func (c *Conn) readLoop() {
 	defer func() {
 		close(c.regularCh)
 		close(c.closeCh)
 	}()
 	for {
-		_, data, err := c.ws.ReadMessage()
+		msgType, data, err := c.ws.ReadMessage()
 		if err != nil {
 			c.mu.Lock()
 			c.closed = true
@@ -75,25 +82,47 @@ func (c *Conn) readLoop() {
 			return
 		}
 
-		frame, err := DecodeFrame(data)
-		if err != nil {
-			continue
+		if c.debug {
+			fmt.Fprintf(os.Stderr, "[ws] raw: wsType=%d len=%d\n", msgType, len(data))
+			if len(data) > 0 && len(data) <= 32 {
+				fmt.Fprintf(os.Stderr, "[ws]   raw hex: %x\n", data)
+			} else if len(data) > 32 {
+				fmt.Fprintf(os.Stderr, "[ws]   raw hex (first 32): %x...\n", data[:32])
+			}
 		}
 
-		switch frame.Type {
-		case MessageRegular:
-			c.incomingAck.Store(frame.ID)
-			select {
-			case c.regularCh <- frame:
-			default:
+		// A single WebSocket message may contain multiple frames
+		for offset := 0; offset < len(data); {
+			frame, err := DecodeFrame(data[offset:])
+			if err != nil {
+				if c.debug {
+					fmt.Fprintf(os.Stderr, "[ws] frame decode error at offset %d: %v\n", offset, err)
+				}
+				break
 			}
-		case MessageControl:
-			select {
-			case c.controlCh <- frame:
-			default:
+			frameLen := HeaderSize + len(frame.Payload)
+			offset += frameLen
+
+			if c.debug {
+				fmt.Fprintf(os.Stderr, "[ws] frame: type=%d id=%d ack=%d payload=%d\n",
+					frame.Type, frame.ID, frame.Ack, len(frame.Payload))
 			}
-		case MessageAck, MessageKeepAlive:
-			// Ack/keepalive — nothing to do for now
+
+			switch frame.Type {
+			case MessageRegular:
+				c.incomingAck.Store(frame.ID)
+				select {
+				case c.regularCh <- frame:
+				default:
+				}
+			case MessageControl:
+				select {
+				case c.controlCh <- frame:
+				default:
+				}
+			case MessageAck, MessageKeepAlive:
+				// Ack/keepalive — nothing to do for now
+			}
 		}
 	}
 }

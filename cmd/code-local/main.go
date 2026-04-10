@@ -21,6 +21,7 @@ func main() {
 	remotePath := flag.String("remote-path", "/", "remote directory to mount")
 	mountPoint := flag.String("mount", "", "local mount point")
 	port := flag.Int("port", 10049, "local NFS server port")
+	debug := flag.Bool("debug", false, "enable debug logging")
 
 	flag.Parse()
 
@@ -30,13 +31,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := run(*urlFlag, *password, *remotePath, *mountPoint, *port); err != nil {
+	if err := run(*urlFlag, *password, *remotePath, *mountPoint, *port, *debug); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run(serverURL, password, remotePath, mountPoint string, port int) error {
+func run(serverURL, password, remotePath, mountPoint string, port int, debug bool) error {
 	// Step 1: Authenticate
 	authClient, err := auth.NewClient(serverURL, password)
 	if err != nil {
@@ -62,6 +63,7 @@ func run(serverURL, password, remotePath, mountPoint string, port int) error {
 		return fmt.Errorf("websocket connect: %w", err)
 	}
 	defer conn.Close()
+	conn.SetDebug(debug)
 
 	fmt.Println("Performing handshake...")
 	if err := conn.Handshake(); err != nil {

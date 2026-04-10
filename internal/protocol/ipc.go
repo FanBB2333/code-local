@@ -51,6 +51,9 @@ type IPCClient struct {
 	eventHandlers map[int]func(interface{})
 }
 
+// NewIPCClient creates an IPC client and sends the initial context message.
+// The server's IPCServer waits for this first Regular message (containing the
+// serialized context) before creating a ChannelServer and sending Initialize.
 func NewIPCClient(conn *Conn) *IPCClient {
 	c := &IPCClient{
 		conn:          conn,
@@ -59,6 +62,17 @@ func NewIPCClient(conn *Conn) *IPCClient {
 		eventHandlers: make(map[int]func(interface{})),
 	}
 	go c.dispatchLoop()
+
+	// Send context: {remoteAuthority: string, clientId: string}
+	// The server deserializes this as RemoteAgentConnectionContext.
+	ctx := map[string]interface{}{
+		"remoteAuthority": "code-server",
+		"clientId":        "renderer",
+	}
+	w := &Writer{}
+	Serialize(w, ctx)
+	conn.SendRegular(w.Bytes())
+
 	return c
 }
 
