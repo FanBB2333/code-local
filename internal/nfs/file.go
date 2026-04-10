@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"path/filepath"
 	"sync"
 
 	"github.com/FanBB2333/code-local/internal/remotefs"
@@ -159,7 +160,13 @@ func (f *File) Close() error {
 	}
 	f.closed = true
 	if f.dirty {
-		return f.fs.remote.WriteFile(f.fs.abs(f.path), f.buf.Bytes(), true, true)
+		absPath := f.fs.abs(f.path)
+		err := f.fs.remote.WriteFile(absPath, f.buf.Bytes(), true, true)
+		if err == nil {
+			f.fs.statCache.Invalidate(absPath)
+			f.fs.dirCache.Invalidate(f.fs.abs(filepath.Dir(f.path)))
+		}
+		return err
 	}
 	return nil
 }

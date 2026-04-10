@@ -10,22 +10,27 @@ import (
 
 	"github.com/go-git/go-billy/v5"
 
+	"github.com/FanBB2333/code-local/internal/cache"
 	"github.com/FanBB2333/code-local/internal/remotefs"
 )
 
 // FileSystem implements billy.Filesystem backed by a remote code-server.
 type FileSystem struct {
-	remote   *remotefs.Client
-	root     string // remote root path (e.g., "/home/user/project")
-	chrootAt string // relative chroot prefix within root
+	remote    *remotefs.Client
+	root      string // remote root path (e.g., "/home/user/project")
+	chrootAt  string // relative chroot prefix within root
+	statCache *cache.Cache // stat results
+	dirCache  *cache.Cache // readdir results
 }
 
 var _ billy.Filesystem = (*FileSystem)(nil)
 
 func NewFileSystem(remote *remotefs.Client, root string) *FileSystem {
 	return &FileSystem{
-		remote: remote,
-		root:   strings.TrimRight(root, "/"),
+		remote:    remote,
+		root:      strings.TrimRight(root, "/"),
+		statCache: cache.New(5*time.Second, 4096),
+		dirCache:  cache.New(3*time.Second, 512),
 	}
 }
 
@@ -78,22 +83,42 @@ func (fs *FileSystem) OpenFile(filename string, flag int, perm os.FileMode) (bil
 }
 
 func (fs *FileSystem) Stat(filename string) (os.FileInfo, error) {
-	st, err := fs.remote.Stat(fs.abs(filename))
+	absPath := fs.abs(filename)
+
+	if v, ok := fs.statCache.Get(absPath); ok {
+		return v.(os.FileInfo), nil
+	}
+
+	st, err := fs.remote.Stat(absPath)
 	if err != nil {
 		if remotefs.IsNotFound(err) {
 			return nil, os.ErrNotExist
 		}
 		return nil, err
 	}
-	return &fileInfo{name: filepath.Base(filename), stat: st}, nil
+	fi := &fileInfo{name: filepath.Base(filename), stat: st}
+	fs.statCache.Set(absPath, os.FileInfo(fi))
+	return fi, nil
 }
 
 func (fs *FileSystem) Rename(oldpath, newpath string) error {
-	return fs.remote.Rename(fs.abs(oldpath), fs.abs(newpath), true)
+	err := fs.remote.Rename(fs.abs(oldpath), fs.abs(newpath), true)
+	if err == nil {
+		fs.statCache.Invalidate(fs.abs(oldpath))
+		fs.statCache.Invalidate(fs.abs(newpath))
+		fs.dirCache.Invalidate(fs.abs(filepath.Dir(oldpath)))
+		fs.dirCache.Invalidate(fs.abs(filepath.Dir(newpath)))
+	}
+	return err
 }
 
 func (fs *FileSystem) Remove(filename string) error {
-	return fs.remote.Delete(fs.abs(filename), false)
+	err := fs.remote.Delete(fs.abs(filename), false)
+	if err == nil {
+		fs.statCache.Invalidate(fs.abs(filename))
+		fs.dirCache.Invalidate(fs.abs(filepath.Dir(filename)))
+	}
+	return err
 }
 
 func (fs *FileSystem) Join(elem ...string) string {
@@ -111,7 +136,13 @@ func (fs *FileSystem) TempFile(dir, prefix string) (billy.File, error) {
 // --- Dir ---
 
 func (fs *FileSystem) ReadDir(path string) ([]os.FileInfo, error) {
-	entries, err := fs.remote.ReadDir(fs.abs(path))
+	absPath := fs.abs(path)
+
+	if v, ok := fs.dirCache.Get(absPath); ok {
+		return v.([]os.FileInfo), nil
+	}
+
+	entries, err := fs.remote.ReadDir(absPath)
 	if err != nil {
 		if remotefs.IsNotFound(err) {
 			return nil, os.ErrNotExist
@@ -128,11 +159,16 @@ func (fs *FileSystem) ReadDir(path string) ([]os.FileInfo, error) {
 			},
 		}
 	}
+	fs.dirCache.Set(absPath, infos)
 	return infos, nil
 }
 
 func (fs *FileSystem) MkdirAll(filename string, perm os.FileMode) error {
-	return fs.remote.Mkdir(fs.abs(filename))
+	err := fs.remote.Mkdir(fs.abs(filename))
+	if err == nil {
+		fs.dirCache.Invalidate(fs.abs(filepath.Dir(filename)))
+	}
+	return err
 }
 
 // --- Symlink ---
@@ -153,9 +189,11 @@ func (fs *FileSystem) Readlink(link string) (string, error) {
 
 func (fs *FileSystem) Chroot(path string) (billy.Filesystem, error) {
 	return &FileSystem{
-		remote:   fs.remote,
-		root:     fs.root,
-		chrootAt: filepath.Join(fs.chrootAt, path),
+		remote:    fs.remote,
+		root:      fs.root,
+		chrootAt:  filepath.Join(fs.chrootAt, path),
+		statCache: fs.statCache,
+		dirCache:  fs.dirCache,
 	}, nil
 }
 

@@ -58,7 +58,7 @@ func (s *Server) MountCmd(mountPoint string) string {
 	if runtime.GOOS == "darwin" {
 		lockOpt = "nolocks" // macOS
 	}
-	return fmt.Sprintf("sudo mount -t nfs -o port=%s,mountport=%s,vers=3,tcp,%s 127.0.0.1:/ %s",
+	return fmt.Sprintf("sudo mount -t nfs -o port=%s,mountport=%s,vers=3,tcp,%s,actimeo=3 127.0.0.1:/ %s",
 		port, port, lockOpt, mountPoint)
 }
 
