@@ -3,6 +3,7 @@ package nfs
 import (
 	"fmt"
 	"net"
+	"runtime"
 
 	"github.com/go-git/go-billy/v5"
 	nfs "github.com/willscott/go-nfs"
@@ -53,8 +54,12 @@ func (s *Server) Close() error {
 // MountCmd returns the OS-specific mount command for the user to run.
 func (s *Server) MountCmd(mountPoint string) string {
 	_, port, _ := net.SplitHostPort(s.Addr())
-	return fmt.Sprintf("sudo mount -t nfs -o port=%s,mountport=%s,vers=3,tcp,nolocks 127.0.0.1:/ %s",
-		port, port, mountPoint)
+	lockOpt := "nolock" // Linux
+	if runtime.GOOS == "darwin" {
+		lockOpt = "nolocks" // macOS
+	}
+	return fmt.Sprintf("sudo mount -t nfs -o port=%s,mountport=%s,vers=3,tcp,%s 127.0.0.1:/ %s",
+		port, port, lockOpt, mountPoint)
 }
 
 // Ensure FileSystem satisfies billy.Filesystem at compile time.

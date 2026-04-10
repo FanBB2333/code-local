@@ -62,7 +62,10 @@ func Dial(ctx context.Context, wsURL, cookie, origin string) (*Conn, error) {
 }
 
 func (c *Conn) readLoop() {
-	defer close(c.closeCh)
+	defer func() {
+		close(c.regularCh)
+		close(c.closeCh)
+	}()
 	for {
 		_, data, err := c.ws.ReadMessage()
 		if err != nil {

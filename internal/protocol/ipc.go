@@ -44,6 +44,7 @@ type IPCClient struct {
 	conn        *Conn
 	nextID      atomic.Int64
 	initialized chan struct{}
+	initOnce    sync.Once
 
 	mu       sync.Mutex
 	handlers map[int]chan *IPCResponse
@@ -83,7 +84,7 @@ func (c *IPCClient) dispatchLoop() {
 
 		switch respType {
 		case ResponseInitialize:
-			close(c.initialized)
+			c.initOnce.Do(func() { close(c.initialized) })
 
 		case ResponsePromiseSuccess, ResponsePromiseError, ResponsePromiseErrorObj:
 			if len(headerArr) < 2 {
