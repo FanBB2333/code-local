@@ -16,16 +16,16 @@ import (
 
 // FileSystem implements billy.Filesystem backed by a remote code-server.
 type FileSystem struct {
-	remote    *remotefs.Client
-	root      string // remote root path (e.g., "/home/user/project")
-	chrootAt  string // relative chroot prefix within root
+	remote    remotefs.FS
+	root      string       // remote root path (e.g., "/home/user/project")
+	chrootAt  string       // relative chroot prefix within root
 	statCache *cache.Cache // stat results
 	dirCache  *cache.Cache // readdir results
 }
 
 var _ billy.Filesystem = (*FileSystem)(nil)
 
-func NewFileSystem(remote *remotefs.Client, root string) *FileSystem {
+func NewFileSystem(remote remotefs.FS, root string) *FileSystem {
 	return &FileSystem{
 		remote:    remote,
 		root:      strings.TrimRight(root, "/"),
@@ -207,10 +207,10 @@ type fileInfo struct {
 	stat *remotefs.FileStat
 }
 
-func (fi *fileInfo) Name() string      { return fi.name }
-func (fi *fileInfo) Size() int64       { return fi.stat.Size }
+func (fi *fileInfo) Name() string       { return fi.name }
+func (fi *fileInfo) Size() int64        { return fi.stat.Size }
 func (fi *fileInfo) ModTime() time.Time { return fi.stat.ModTime() }
-func (fi *fileInfo) IsDir() bool       { return fi.stat.Type == remotefs.FileTypeDirectory }
+func (fi *fileInfo) IsDir() bool        { return fi.stat.Type == remotefs.FileTypeDirectory }
 func (fi *fileInfo) Sys() interface{}   { return nil }
 
 func (fi *fileInfo) Mode() os.FileMode {

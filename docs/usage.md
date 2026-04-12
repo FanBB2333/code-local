@@ -19,6 +19,7 @@ go build -o code-local ./cmd/code-local/
   --url https://your-code-server.example.com \
   --password your-password \
   --mount /tmp/remote \
+  --backend nfs \
   --remote-path /home/user/project
 ```
 
@@ -30,11 +31,16 @@ go build -o code-local ./cmd/code-local/
 | `--password` | 是 | - | code-server 登录密码 |
 | `--mount` | 是 | - | 本地挂载点路径 |
 | `--remote-path` | 否 | `/` | 要挂载的远程目录路径 |
-| `--port` | 否 | `10049` | 本地 NFS 服务器端口 |
+| `--backend` | 否 | `nfs` | 本地挂载后端，支持 `nfs` / `webdav` |
+| `--port` | 否 | `10049` | 本地后端服务端口 |
 
 ## 挂载
 
-程序启动后会输出挂载命令，例如：
+程序启动后会根据所选后端输出挂载命令。
+
+### NFS
+
+例如：
 
 ```
 NFS server listening on 127.0.0.1:10049
@@ -44,6 +50,19 @@ To mount, run:
 ```
 
 在另一个终端中执行该命令即可完成挂载。
+
+### WebDAV
+
+例如：
+
+```bash
+WEBDAV server listening on 127.0.0.1:10049
+
+To mount, run:
+  mkdir -p /tmp/remote && mount_webdav -S -v code-local http://127.0.0.1:10049/ /tmp/remote
+```
+
+Linux 上会输出 `davfs` 风格命令，需要先安装 `davfs2`。
 
 ## 卸载
 
@@ -63,7 +82,7 @@ sudo umount /tmp/remote
 2. **WebSocket**：使用 cookie 建立 WebSocket 连接
 3. **握手**：完成 VS Code Server 的二进制握手协议
 4. **IPC**：通过 VS Code 的 IPC 协议进行文件操作
-5. **NFS**：在本地启动 NFS v3 服务器，将文件操作透传到远程
+5. **Backend Server**：在本地启动所选后端服务（NFS 或 WebDAV），将文件操作透传到远程
 
 ## 限制
 
@@ -89,3 +108,8 @@ sudo umount /tmp/remote
 - 确认端口未被占用：`lsof -i :10049`
 - macOS 可能需要 `sudo` 权限
 - Linux 需安装 `nfs-common`：`sudo apt install nfs-common`
+
+### WebDAV 挂载失败
+- 确认端口未被占用：`lsof -i :10049`
+- macOS 使用 `mount_webdav`
+- Linux 需安装 `davfs2`

@@ -2,6 +2,7 @@ package remotefs
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -81,7 +82,12 @@ func (e *RemoteError) Error() string {
 
 func IsNotFound(err error) bool {
 	if re, ok := err.(*RemoteError); ok {
-		return re.Code == "EntryNotFound"
+		code := strings.ToLower(re.Code)
+		msg := strings.ToLower(re.Message)
+		return strings.Contains(code, "notfound") ||
+			strings.Contains(code, "not found") ||
+			strings.Contains(msg, "notfound") ||
+			strings.Contains(msg, "not found")
 	}
 	return false
 }

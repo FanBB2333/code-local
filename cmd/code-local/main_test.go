@@ -1,0 +1,79 @@
+package main
+
+import (
+	"context"
+	"net"
+	"testing"
+
+	"github.com/FanBB2333/code-local/internal/remotefs"
+)
+
+type testRemoteFS struct{}
+
+func (testRemoteFS) Stat(path string) (*remotefs.FileStat, error) { return nil, nil }
+func (testRemoteFS) ReadDir(path string) ([]remotefs.DirEntry, error) {
+	return nil, nil
+}
+func (testRemoteFS) ReadFile(path string) ([]byte, error) { return nil, nil }
+func (testRemoteFS) WriteFile(path string, data []byte, create, overwrite bool) error {
+	return nil
+}
+func (testRemoteFS) Mkdir(path string) error                  { return nil }
+func (testRemoteFS) Delete(path string, recursive bool) error { return nil }
+func (testRemoteFS) Rename(oldPath, newPath string, overwrite bool) error {
+	return nil
+}
+
+func freePort(t *testing.T) int {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+	return ln.Addr().(*net.TCPAddr).Port
+}
+
+func TestParseBackendDefaultsToNFS(t *testing.T) {
+	backend, err := parseBackend("")
+	if err != nil {
+		t.Fatalf("parseBackend returned error: %v", err)
+	}
+	if backend != backendNFS {
+		t.Fatalf("expected default backend %q, got %q", backendNFS, backend)
+	}
+}
+
+func TestParseBackendRejectsUnknownBackend(t *testing.T) {
+	if _, err := parseBackend("smb"); err == nil {
+		t.Fatal("expected error for unknown backend")
+	}
+}
+
+func TestCreateBackendSupportsNFSAndWebDAV(t *testing.T) {
+	for _, backend := range []backendKind{backendNFS, backendWebDAV} {
+		server, err := createBackend(context.Background(), backend, testRemoteFS{}, "/workspace/demo", freePort(t))
+		if err != nil {
+			t.Fatalf("createBackend(%q) returned error: %v", backend, err)
+		}
+		if server == nil {
+			t.Fatalf("createBackend(%q) returned nil server", backend)
+		}
+		if err := server.Close(); err != nil {
+			t.Fatalf("close backend %q: %v", backend, err)
+		}
+	}
+}
+
+func TestCreateBackendMountCommand(t *testing.T) {
+	server, err := createBackend(context.Background(), backendWebDAV, testRemoteFS{}, "/workspace/demo", freePort(t))
+	if err != nil {
+		t.Fatalf("createBackend(webdav) returned error: %v", err)
+	}
+	defer server.Close()
+
+	cmd := server.MountCmd("/tmp/code-local-webdav")
+	if cmd == "" {
+		t.Fatal("expected non-empty mount command")
+	}
+}
