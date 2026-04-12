@@ -19,7 +19,7 @@ type Server struct {
 }
 
 // NewServer creates an NFS server on the given port, exposing the remote path.
-func NewServer(remote *remotefs.Client, remotePath string, port int) (*Server, error) {
+func NewServer(remote remotefs.FS, remotePath string, port int) (*Server, error) {
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
