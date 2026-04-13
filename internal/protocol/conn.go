@@ -25,14 +25,43 @@ type Conn struct {
 	outgoingID  atomic.Uint32
 	incomingAck atomic.Uint32
 
-	mu       sync.Mutex
-	closed   bool
-	closeCh  chan struct{}
-	debug    bool
+	mu        sync.Mutex
+	closeOnce sync.Once
+	closed    bool
+	closeCh   chan struct{}
+	debug     bool
 
 	// Channels for received messages
 	regularCh chan *Frame
 	controlCh chan *Frame
+}
+
+func (c *Conn) signalClosed() {
+	c.closeOnce.Do(func() {
+		close(c.closeCh)
+	})
+}
+
+func (c *Conn) deliverFrame(frame *Frame) error {
+	switch frame.Type {
+	case MessageRegular:
+		c.incomingAck.Store(frame.ID)
+		select {
+		case c.regularCh <- frame:
+			return nil
+		case <-c.closeCh:
+			return fmt.Errorf("connection closed")
+		}
+	case MessageControl:
+		select {
+		case c.controlCh <- frame:
+			return nil
+		case <-c.closeCh:
+			return fmt.Errorf("connection closed")
+		}
+	default:
+		return nil
+	}
 }
 
 // Dial connects to code-server's WebSocket endpoint with authentication.
@@ -70,8 +99,8 @@ func (c *Conn) SetDebug(on bool) {
 
 func (c *Conn) readLoop() {
 	defer func() {
+		c.signalClosed()
 		close(c.regularCh)
-		close(c.closeCh)
 	}()
 	for {
 		msgType, data, err := c.ws.ReadMessage()
@@ -108,20 +137,8 @@ func (c *Conn) readLoop() {
 					frame.Type, frame.ID, frame.Ack, len(frame.Payload))
 			}
 
-			switch frame.Type {
-			case MessageRegular:
-				c.incomingAck.Store(frame.ID)
-				select {
-				case c.regularCh <- frame:
-				default:
-				}
-			case MessageControl:
-				select {
-				case c.controlCh <- frame:
-				default:
-				}
-			case MessageAck, MessageKeepAlive:
-				// Ack/keepalive — nothing to do for now
+			if err := c.deliverFrame(frame); err != nil {
+				return
 			}
 		}
 	}
@@ -193,6 +210,7 @@ func (c *Conn) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.closed = true
+	c.signalClosed()
 	return c.ws.Close()
 }
 
