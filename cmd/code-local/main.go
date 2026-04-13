@@ -38,6 +38,7 @@ func main() {
 	mountPoint := flag.String("mount", "", "local mount point")
 	port := flag.Int("port", 10049, "local NFS server port")
 	backend := flag.String("backend", string(backendNFS), "local mount backend: nfs or webdav")
+	nfsActimeo := flag.Int("nfs-actimeo", 3, "NFS attribute cache timeout in seconds")
 	debug := flag.Bool("debug", false, "enable debug logging")
 
 	flag.Parse()
@@ -54,7 +55,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := run(*urlFlag, *password, *remotePath, *mountPoint, parsedBackend, *port, *debug); err != nil {
+	if err := run(*urlFlag, *password, *remotePath, *mountPoint, parsedBackend, *port, *nfsActimeo, *debug); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
@@ -73,11 +74,11 @@ func parseBackend(raw string) (backendKind, error) {
 	}
 }
 
-func createBackend(ctx context.Context, backend backendKind, remote remotefs.FS, remotePath string, port int) (localBackend, error) {
+func createBackend(ctx context.Context, backend backendKind, remote remotefs.FS, remotePath string, port int, nfsOpts nfsserver.Options) (localBackend, error) {
 	_ = ctx
 	switch backend {
 	case backendNFS:
-		return nfsserver.NewServer(remote, remotePath, port)
+		return nfsserver.NewServer(remote, remotePath, port, nfsOpts)
 	case backendWebDAV:
 		return webdavserver.NewServer(remote, remotePath, port)
 	default:
@@ -95,7 +96,7 @@ func wrapRemoteFS(remote remotefs.FS, remotePath string) (remotefs.FS, func(), e
 	return cached, stop, nil
 }
 
-func run(serverURL, password, remotePath, mountPoint string, backend backendKind, port int, debug bool) error {
+func run(serverURL, password, remotePath, mountPoint string, backend backendKind, port, nfsActimeo int, debug bool) error {
 	// Step 1: Authenticate
 	authClient, err := auth.NewClient(serverURL, password)
 	if err != nil {
@@ -156,7 +157,7 @@ func run(serverURL, password, remotePath, mountPoint string, backend backendKind
 	defer stopRemote()
 
 	// Step 5: Start local backend server
-	server, err := createBackend(ctx, backend, remote, remotePath, port)
+	server, err := createBackend(ctx, backend, remote, remotePath, port, nfsserver.Options{Actimeo: nfsActimeo})
 	if err != nil {
 		return fmt.Errorf("create %s server: %w", backend, err)
 	}

@@ -12,14 +12,20 @@ import (
 	"github.com/FanBB2333/code-local/internal/remotefs"
 )
 
+// Options controls NFS server tuning parameters.
+type Options struct {
+	Actimeo int // attribute cache timeout in seconds; 0 or negative defaults to 3
+}
+
 // Server wraps a go-nfs server backed by a remote code-server filesystem.
 type Server struct {
 	listener net.Listener
 	fs       *FileSystem
+	opts     Options
 }
 
 // NewServer creates an NFS server on the given port, exposing the remote path.
-func NewServer(remote remotefs.FS, remotePath string, port int) (*Server, error) {
+func NewServer(remote remotefs.FS, remotePath string, port int, opts Options) (*Server, error) {
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -31,6 +37,7 @@ func NewServer(remote remotefs.FS, remotePath string, port int) (*Server, error)
 	return &Server{
 		listener: listener,
 		fs:       fs,
+		opts:     opts,
 	}, nil
 }
 
@@ -54,12 +61,16 @@ func (s *Server) Close() error {
 // MountCmd returns the OS-specific mount command for the user to run.
 func (s *Server) MountCmd(mountPoint string) string {
 	_, port, _ := net.SplitHostPort(s.Addr())
+	actimeo := s.opts.Actimeo
+	if actimeo <= 0 {
+		actimeo = 3
+	}
 	lockOpt := "nolock" // Linux
 	if runtime.GOOS == "darwin" {
 		lockOpt = "nolocks" // macOS
 	}
-	return fmt.Sprintf("sudo mount -t nfs -o port=%s,mountport=%s,vers=3,tcp,%s,actimeo=3 127.0.0.1:/ %s",
-		port, port, lockOpt, mountPoint)
+	return fmt.Sprintf("sudo mount -t nfs -o port=%s,mountport=%s,vers=3,tcp,%s,actimeo=%d 127.0.0.1:/ %s",
+		port, port, lockOpt, actimeo, mountPoint)
 }
 
 // Ensure FileSystem satisfies billy.Filesystem at compile time.

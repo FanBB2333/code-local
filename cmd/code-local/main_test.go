@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"net"
+	"strings"
 	"testing"
 
+	nfsserver "github.com/FanBB2333/code-local/internal/nfs"
 	"github.com/FanBB2333/code-local/internal/remotefs"
 )
 
@@ -52,7 +54,7 @@ func TestParseBackendRejectsUnknownBackend(t *testing.T) {
 
 func TestCreateBackendSupportsNFSAndWebDAV(t *testing.T) {
 	for _, backend := range []backendKind{backendNFS, backendWebDAV} {
-		server, err := createBackend(context.Background(), backend, testRemoteFS{}, "/workspace/demo", freePort(t))
+		server, err := createBackend(context.Background(), backend, testRemoteFS{}, "/workspace/demo", freePort(t), nfsserver.Options{})
 		if err != nil {
 			t.Fatalf("createBackend(%q) returned error: %v", backend, err)
 		}
@@ -66,7 +68,7 @@ func TestCreateBackendSupportsNFSAndWebDAV(t *testing.T) {
 }
 
 func TestCreateBackendMountCommand(t *testing.T) {
-	server, err := createBackend(context.Background(), backendWebDAV, testRemoteFS{}, "/workspace/demo", freePort(t))
+	server, err := createBackend(context.Background(), backendWebDAV, testRemoteFS{}, "/workspace/demo", freePort(t), nfsserver.Options{})
 	if err != nil {
 		t.Fatalf("createBackend(webdav) returned error: %v", err)
 	}
@@ -107,5 +109,24 @@ func TestWrapRemoteFSStartsAndStopsWatch(t *testing.T) {
 
 	if base.unwatchCalls != 1 {
 		t.Fatalf("unwatchCalls = %d, want 1", base.unwatchCalls)
+	}
+}
+
+func TestCreateBackendPassesNFSOptions(t *testing.T) {
+	server, err := createBackend(
+		context.Background(),
+		backendNFS,
+		testRemoteFS{},
+		"/workspace/demo",
+		freePort(t),
+		nfsserver.Options{Actimeo: 30},
+	)
+	if err != nil {
+		t.Fatalf("createBackend() error = %v", err)
+	}
+	defer server.Close()
+
+	if !strings.Contains(server.MountCmd("/tmp/code-local"), "actimeo=30") {
+		t.Fatalf("mount command %q does not contain actimeo=30", server.MountCmd("/tmp/code-local"))
 	}
 }

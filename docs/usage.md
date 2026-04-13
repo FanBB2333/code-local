@@ -33,6 +33,7 @@ go build -o code-local ./cmd/code-local/
 | `--remote-path` | 否 | `/` | 要挂载的远程目录路径 |
 | `--backend` | 否 | `nfs` | 本地挂载后端，支持 `nfs` / `webdav` |
 | `--port` | 否 | `10049` | 本地后端服务端口 |
+| `--nfs-actimeo` | 否 | `3` | NFS attribute cache 秒数，大项目建议从 `30` 开始调优 |
 
 ## 挂载
 
@@ -92,6 +93,12 @@ sudo umount /tmp/remote
 - 不支持 symlink 创建
 - cache 模块已实现但尚未接入 billy 层（后续优化）
 - 双向实时同步（file watch）已有接口但尚未接入 NFS 层
+
+## 大项目优化建议
+
+- 大项目优先使用 `nfs` 后端
+- 大目录、读多写少的仓库可以提高 `--nfs-actimeo`（建议 30 秒起）
+- 详细性能分析见 [large-project-performance.md](large-project-performance.md)
 
 ## 故障排查
 

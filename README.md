@@ -23,6 +23,7 @@ go build -o code-local ./cmd/code-local/
   --password yourpass \
   --mount /tmp/remote \
   --backend nfs \
+  --nfs-actimeo 30 \
   --remote-path /home/user/project
 
 # Then run the mount command printed by code-local:
@@ -44,8 +45,8 @@ For WebDAV:
 
 ## Backends
 
-- `nfs`: existing behavior, best when your machine already has NFS client tooling available.
-- `webdav`: uses a local HTTP WebDAV server; useful when NFS is unavailable or undesirable.
+- `nfs`: recommended for large repositories — stronger metadata caching and configurable attribute cache timeout.
+- `webdav`: compatibility backend when NFS tooling is unavailable.
 
 ## Documentation
 
