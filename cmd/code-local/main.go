@@ -85,6 +85,16 @@ func createBackend(ctx context.Context, backend backendKind, remote remotefs.FS,
 	}
 }
 
+// wrapRemoteFS wraps a remote FS with a shared cache and starts a recursive watch.
+func wrapRemoteFS(remote remotefs.FS, remotePath string) (remotefs.FS, func(), error) {
+	cached := remotefs.NewCachedFS(remote, remotefs.DefaultCacheConfig())
+	stop, err := cached.StartWatch(remotePath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("start remote watch: %w", err)
+	}
+	return cached, stop, nil
+}
+
 func run(serverURL, password, remotePath, mountPoint string, backend backendKind, port int, debug bool) error {
 	// Step 1: Authenticate
 	authClient, err := auth.NewClient(serverURL, password)
@@ -126,11 +136,11 @@ func run(serverURL, password, remotePath, mountPoint string, backend backendKind
 	}
 	fmt.Println("IPC initialized.")
 
-	// Step 4: Remote FS client
-	remote := remotefs.NewClient(ipc)
+	// Step 4: Remote FS client with shared cache
+	baseRemote := remotefs.NewClient(ipc)
 
 	// Quick test: stat the remote path
-	st, err := remote.Stat(remotePath)
+	st, err := baseRemote.Stat(remotePath)
 	if err != nil {
 		return fmt.Errorf("stat remote path %q: %w", remotePath, err)
 	}
@@ -138,6 +148,12 @@ func run(serverURL, password, remotePath, mountPoint string, backend backendKind
 		return fmt.Errorf("remote path %q is not a directory", remotePath)
 	}
 	fmt.Printf("Remote path %q OK (directory).\n", remotePath)
+
+	remote, stopRemote, err := wrapRemoteFS(baseRemote, remotePath)
+	if err != nil {
+		return fmt.Errorf("prepare remote filesystem: %w", err)
+	}
+	defer stopRemote()
 
 	// Step 5: Start local backend server
 	server, err := createBackend(ctx, backend, remote, remotePath, port)

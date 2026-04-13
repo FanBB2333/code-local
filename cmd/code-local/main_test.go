@@ -77,3 +77,35 @@ func TestCreateBackendMountCommand(t *testing.T) {
 		t.Fatal("expected non-empty mount command")
 	}
 }
+
+type testWatchableFS struct {
+	testRemoteFS
+	watchCalls   int
+	unwatchCalls int
+}
+
+func (f *testWatchableFS) Watch(sessionID, reqID, path string, recursive bool, handler func([]remotefs.FileChange)) (func(), error) {
+	f.watchCalls++
+	return func() { f.unwatchCalls++ }, nil
+}
+
+func TestWrapRemoteFSStartsAndStopsWatch(t *testing.T) {
+	base := &testWatchableFS{}
+
+	wrapped, stop, err := wrapRemoteFS(base, "/workspace/demo")
+	if err != nil {
+		t.Fatalf("wrapRemoteFS() error = %v", err)
+	}
+	if _, ok := wrapped.(*remotefs.CachedFS); !ok {
+		t.Fatalf("wrapped remote type = %T, want *remotefs.CachedFS", wrapped)
+	}
+	if base.watchCalls != 1 {
+		t.Fatalf("watchCalls = %d, want 1", base.watchCalls)
+	}
+
+	stop()
+
+	if base.unwatchCalls != 1 {
+		t.Fatalf("unwatchCalls = %d, want 1", base.unwatchCalls)
+	}
+}
