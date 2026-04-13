@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	ackInterval    = 2 * time.Second
+	ackInterval       = 2 * time.Second
 	keepAliveInterval = 5 * time.Second
 )
 

@@ -9,8 +9,8 @@ import (
 
 // countingRemoteFS tracks per-path call counts for Stat and ReadDir.
 type countingRemoteFS struct {
-	mu           sync.Mutex
-	statCounts   map[string]int
+	mu            sync.Mutex
+	statCounts    map[string]int
 	readDirCounts map[string]int
 }
 
@@ -47,11 +47,11 @@ func (f *countingRemoteFS) ReadDirCalls(path string) int {
 	return f.readDirCounts[path]
 }
 
-func (f *countingRemoteFS) ReadFile(string) ([]byte, error)                       { return nil, nil }
-func (f *countingRemoteFS) WriteFile(string, []byte, bool, bool) error            { return nil }
-func (f *countingRemoteFS) Mkdir(string) error                                    { return nil }
-func (f *countingRemoteFS) Delete(string, bool) error                             { return nil }
-func (f *countingRemoteFS) Rename(string, string, bool) error                     { return nil }
+func (f *countingRemoteFS) ReadFile(string) ([]byte, error)            { return nil, nil }
+func (f *countingRemoteFS) WriteFile(string, []byte, bool, bool) error { return nil }
+func (f *countingRemoteFS) Mkdir(string) error                         { return nil }
+func (f *countingRemoteFS) Delete(string, bool) error                  { return nil }
+func (f *countingRemoteFS) Rename(string, string, bool) error          { return nil }
 
 func TestCachedFSStatCachesAndDeduplicatesConcurrentCalls(t *testing.T) {
 	remote := newCountingRemoteFS()
