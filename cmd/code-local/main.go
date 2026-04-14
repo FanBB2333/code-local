@@ -14,6 +14,7 @@ import (
 	nfsserver "github.com/FanBB2333/code-local/internal/nfs"
 	"github.com/FanBB2333/code-local/internal/protocol"
 	"github.com/FanBB2333/code-local/internal/remotefs"
+	"github.com/FanBB2333/code-local/internal/terminal"
 	webdavserver "github.com/FanBB2333/code-local/internal/webdav"
 )
 
@@ -32,6 +33,12 @@ type localBackend interface {
 }
 
 func main() {
+	// Subcommand routing
+	if len(os.Args) >= 2 && os.Args[1] == "terminal" {
+		terminalMain(os.Args[2:])
+		return
+	}
+
 	urlFlag := flag.String("url", "", "code-server URL (e.g. https://example.com:8080)")
 	password := flag.String("password", "", "code-server password")
 	remotePath := flag.String("remote-path", "/", "remote directory to mount")
@@ -188,4 +195,73 @@ func run(serverURL, password, remotePath, mountPoint string, backend backendKind
 		server.Close()
 		return nil
 	}
+}
+
+func terminalMain(args []string) {
+	fs := flag.NewFlagSet("terminal", flag.ExitOnError)
+	urlFlag := fs.String("url", "", "code-server URL (e.g. https://example.com:8080)")
+	password := fs.String("password", "", "code-server password")
+	remotePath := fs.String("cwd", "/", "working directory for the terminal")
+	debug := fs.Bool("debug", false, "enable debug logging")
+
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "Usage: code-local terminal --url <url> --password <password> [--cwd <path>]")
+		fs.PrintDefaults()
+	}
+	fs.Parse(args)
+
+	if *urlFlag == "" || *password == "" {
+		fs.Usage()
+		os.Exit(1)
+	}
+
+	if err := runTerminal(*urlFlag, *password, *remotePath, *debug); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func runTerminal(serverURL, password, cwd string, debug bool) error {
+	// Step 1: Authenticate
+	authClient, err := auth.NewClient(serverURL, password)
+	if err != nil {
+		return fmt.Errorf("create auth client: %w", err)
+	}
+
+	fmt.Fprintf(os.Stderr, "Logging in to %s...\n", serverURL)
+	if err := authClient.Login(); err != nil {
+		return fmt.Errorf("login: %w", err)
+	}
+	fmt.Fprintln(os.Stderr, "Login successful.")
+
+	// Step 2: WebSocket connection
+	wsURL, err := authClient.WebSocketURL()
+	if err != nil {
+		return fmt.Errorf("websocket URL: %w", err)
+	}
+
+	fmt.Fprintln(os.Stderr, "Connecting WebSocket...")
+	ctx := context.Background()
+	conn, err := protocol.Dial(ctx, wsURL, authClient.CookieHeader(), authClient.Origin())
+	if err != nil {
+		return fmt.Errorf("websocket connect: %w", err)
+	}
+	defer conn.Close()
+	conn.SetDebug(debug)
+
+	fmt.Fprintln(os.Stderr, "Performing handshake...")
+	if err := conn.Handshake(); err != nil {
+		return fmt.Errorf("handshake: %w", err)
+	}
+
+	// Step 3: IPC client
+	ipc := protocol.NewIPCClient(conn)
+	if err := ipc.WaitInitialized(10 * time.Second); err != nil {
+		return fmt.Errorf("IPC init: %w", err)
+	}
+	fmt.Fprintln(os.Stderr, "Connected. Starting terminal session...")
+
+	// Step 4: Terminal session
+	tc := terminal.NewClient(ipc)
+	return terminal.RunSession(tc, cwd)
 }
