@@ -43,6 +43,41 @@ For WebDAV:
 # Then run the mount command printed by code-local.
 ```
 
+## Remote terminal
+
+Open an interactive shell session inside the remote code-server environment directly in your local terminal — no SSH required:
+
+```bash
+./code-local terminal \
+  --url https://your-server:8080 \
+  --password yourpass \
+  --cwd /home/user/project
+```
+
+The local terminal is bridged to a `/bin/bash` process running on the remote host. Terminal resize (`SIGWINCH`) is forwarded automatically. Press `Ctrl+C` to exit.
+
+### Terminal flags
+
+| Flag | Required | Default | Description |
+|------|----------|---------|-------------|
+| `--url` | yes | - | code-server URL |
+| `--password` | yes | - | code-server login password |
+| `--cwd` | no | `/` | Working directory for the remote shell |
+| `--debug` | no | `false` | Enable debug logging |
+
+## Mount flags
+
+| Flag | Required | Default | Description |
+|------|----------|---------|-------------|
+| `--url` | yes | - | code-server URL |
+| `--password` | yes | - | code-server login password |
+| `--mount` | yes | - | Local mount point path |
+| `--remote-path` | no | `/` | Remote directory to mount |
+| `--backend` | no | `nfs` | Local mount backend: `nfs` or `webdav` |
+| `--port` | no | `10049` | Local backend server port |
+| `--nfs-actimeo` | no | `3` | NFS attribute cache timeout in seconds (try `30` for large repos) |
+| `--debug` | no | `false` | Enable debug logging |
+
 ## Backends
 
 - `nfs`: recommended for large repositories — stronger metadata caching and configurable attribute cache timeout.
